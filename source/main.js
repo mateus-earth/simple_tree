@@ -5,12 +5,12 @@
 //                   \__ \ || (_| | | | | | | (_| | |_| |_                    //
 //                   |___/\__\__,_|_| |_| |_|\__,_|\__|\__|                   //
 //                                                                            //
-//  File      : Simple_Tree.js                                                //
+//  File      : main.js                                                       //
 //  Project   : simple_tree                                                   //
 //  Date      : Aug 25, 2019                                                  //
 //  License   : GPLv3                                                         //
 //  Author    : stdmatt <stdmatt@pixelwizards.io>                             //
-//  Copyright : stdmatt 2019, 2020                                            //
+//  Copyright : stdmatt 2019 - 2022                                            //
 //                                                                            //
 //  Description :                                                             //
 //                                                                            //
@@ -289,9 +289,3 @@ function Draw(dt)
         tree.Draw(dt);
     }
 }
-
-
-//----------------------------------------------------------------------------//
-// Entry Point                                                                //
-//----------------------------------------------------------------------------//
-Setup();
