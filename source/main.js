@@ -28,24 +28,8 @@ __SOURCES = [
 //----------------------------------------------------------------------------//
 // Constants                                                                  //
 //----------------------------------------------------------------------------//
-const GENERATIONS_MIN = 5;
-const GENERATIONS_MAX = 7;
-const SIZE_MIN        = 100;
-const SIZE_MAX        = 180;
-const DECAY_MIN       = 0.7;
-const DECAY_MAX       = 0.9;
-const ANGLE_MIN       = 10;
-const ANGLE_MAX       = 30;
-
-const ANIM_GROW_DURATION_MIN = 1500;
-const ANIM_GROW_DURATION_MAX = 3500;
-
-const MIN_TREES_COUNT = 3;
-const MAX_TREES_COUNT = 7;
-
-let background_color = null;
-let tree_color       = null;
-let trees            = null;
+const C = {} // Constants
+const G = {} // Globals
 
 //----------------------------------------------------------------------------//
 // Classes                                                                    //
@@ -70,6 +54,10 @@ class Branch
         this.start_pos = make_vec2(start_x, start_y);
         this.end_pos   = make_vec2(end_x, end_y);
 
+        this.time_to_grow = random_float(ANIM_GROW_DURATION_MIN, ANIM_GROW_DURATION_MAX);
+        this.grow_time    = 0;
+
+        this.max_branches_count = random_int(BRANCHES_COUNT_MIN, BRANCHES_COUNT_MAX)
         this.branches = [];
     }
 }
@@ -81,54 +69,43 @@ function create_sub_branch(branch)
         return;
     }
 
-    const new_generation = (branch.curr_generation + 1);
-    // Left
-    {
-        const t = random_float(0.7, 1);
+    const tx = random_float(0.7, 1.0);
+    const ty = random_float(0.7, 1.0);
 
-        const x = lerp(branch.start_pos.x, branch.end_pos.x, t);
-        const y = letp(branch.start_pos.y, branch.end_pos.y, t);
-        const s = branch.curr_size  * random_float(DECAY_MIN, DECAY_MAX);
-        const a = branch.curr_angle + random_float(ANGLE_MIN, ANGLE_MAX);
-        const g = new_generation;
-        const p = branch.parent_tree;
+    const x  = lerp(tx, branch.start_pos.x, branch.end_pos.x);
+    const y  = lerp(ty, branch.start_pos.y, branch.end_pos.y);
+    const s  = branch.curr_size  * random_float(DECAY_MIN, DECAY_MAX);
+    const a  = branch.curr_angle + random_float(ANGLE_MIN, ANGLE_MAX);
+    const g  = (branch.curr_generation + 1);
+    const p  = branch.parent_tree;
 
-        const branch = new Branch(x, y, s, a, g, p);
-        branch.branches.push(branch);
-    }
-
-    // Right
-    {
-        const t = random_float(0.7, 1);
-
-        const x = lerp(branch.start_pos.x, branch.end_pos.x, t);
-        const y = letp(branch.start_pos.y, branch.end_pos.y, t);
-        const s = branch.curr_size  * random_float(DECAY_MIN, DECAY_MAX);
-        const a = branch.curr_angle - random_float(ANGLE_MIN, ANGLE_MAX);
-        const g = new_generation;
-        const p = branch.parent_tree;
-
-        const branch = new Branch(x, y, s, a, g, p);
-        branch.branches.push(branch);
-    }
+    const b = new Branch(x, y, s, a, g, p);
+    branch.branches.push(b);
 }
 
 //------------------------------------------------------------------------------
-function draw_branch(branch)
+function draw_branch(branch, dt)
 {
-    const size = (branch.parent_tree.max_generations / (branch.curr_generation + 1));
+    const size = 2;
     set_canvas_stroke_size(size);
 
-    const  t = 1.0;
-    const x1 = branch.start_posx;
-    const y1 = branch.start_posy;
+    branch.grow_time += dt;
+
+    const  t = Math.min(branch.grow_time / branch.time_to_grow, 1.0);
+    const x1 = branch.start_pos.x;
+    const y1 = branch.start_pos.y;
     const x2 = lerp(t, x1, branch.end_pos.x);
     const y2 = lerp(t, y1, branch.end_pos.y);
 
     draw_line(x1, y1, x2, y2);
 
+    const change = random_float(0, 1);
+    if(change < t && branch.branches.length < branch.max_branches_count) {
+        create_sub_branch(branch);
+    }
+
     for(let i = 0; i < branch.branches.length; ++i) {
-        draw_branch(branch.branches[i]);
+        draw_branch(branch.branches[i], dt);
     }
 }
 
@@ -143,31 +120,28 @@ function create_tree()
 //------------------------------------------------------------------------------
 function reset_tree(tree)
 {
-    tree.max_generations = random_int(GENERATIONS_MIN, GENERATIONS_MAX);
-    tree.color           = chroma(tree_color);
-    tree.is_done         = false;
 
     const canvas_w = get_canvas_width ();
     const canvas_h = get_canvas_height();
 
-    const root_x = random_int(-canvas_w * 0.5, +canvas_w * 0.5);
+    const root_x = 0; random_int(-canvas_w * 0.5, +canvas_w * 0.5);
     const root_y = (canvas_h * 0.5);
     const size   = random_int(SIZE_MIN,  SIZE_MAX);
     const angle  = -90 + random_int(-10, +10);
 
-    tree.branch = new Branch(root_x, root_y, size, angle, 0, this);
+    tree.branch = new Branch(root_x, root_y, size, angle, 0, tree);
 }
 
 //------------------------------------------------------------------------------
-function draw_tree(tree)
+function draw_tree(tree, dt)
 {
     set_canvas_stroke(tree.color);
-    draw_branch      (tree.branch);
+    draw_branch      (tree.branch, dt);
 }
 
 
 //----------------------------------------------------------------------------//
-// Setup / Draw                                                               //
+// Setup / Entry Point                                                        //
 //----------------------------------------------------------------------------//
 //------------------------------------------------------------------------------
 function setup_demo_mode()
@@ -193,24 +167,15 @@ function setup_demo_mode()
 //------------------------------------------------------------------------------
 function setup_common(user_canvas)
 {
-    set_main_canvas(user_canvas);
-    set_canvas_fill("white");
-
-    set_random_seed       (null);
+    set_main_canvas       (user_canvas);
     install_input_handlers(user_canvas);
 
-    // Create the Trees.
-    background_color = chroma("red");
-    tree_color       = chroma("cyan");
-    trees            = [];
+    set_random_seed(null);
 
-    const trees_count = random_int(MIN_TREES_COUNT, MAX_TREES_COUNT);
-    for(let i = 0; i < trees_count; ++i) {
-        trees.push(create_tree());
-    }
+    init_constants_and_globals();
 
     translate_canvas_to_center();
-    start_draw_loop(draw);
+    start_draw_loop(update);
 }
 
 //------------------------------------------------------------------------------
@@ -225,19 +190,57 @@ function demo_start(user_canvas)
     }
 }
 
-//------------------------------------------------------------------------------
-function draw(dt)
-{
-    tween_manager_update(dt);
 
+//----------------------------------------------------------------------------//
+// Demo                                                                       //
+//----------------------------------------------------------------------------//
+function init_constants_and_globals()
+{
+    // Tree
+    C.MAX_TREES    = 5;
+    C.TREE_AGE     = make_min_max(2, 10);    // seconds
+    C.TREE_SIZE    = make_min_max(0.1, 0.7); // % of screen
+    C.SPREAD_ANGLE = make_min_max(-15, +15); // degrees
+    // Season
+    C.SEASON_TIME  = make_min_max(1, 1); // seconds;
+    C.SPRING_COLOR = chroma("cyan");
+    C.SUMMER_COLOR = chroma("blue");
+    C.AUTUMN_COLOR = chroma("gray");
+    C.WINTER_COLOR = chroma("white");
+    C.SEASON_COLORS = [ C.SPRING_COLOR, C.SUMMER_COLOR, C.AUTUMN_COLOR, C.WINTER_COLOR ];
+
+    G.trees             = null;
+
+    G.season_index      = 0;
+    G.season_max_time   = C.SEASON_TIME.random_float();
+    G.season_curr_time  = 0;
+    G.season_t          = 0;
+}
+
+//------------------------------------------------------------------------------
+function update(dt)
+{
     begin_draw();
-        clear_canvas();
-        for(let i = 0; i < trees.length; ++i) {
-            const tree = trees[i];
-            if(tree.is_done) {
-                reset_tree(tree);
+        //
+        // Update season
+        //
+        {
+            G.season_curr_time += dt;
+            if(G.season_curr_time >= G.season_max_time) {
+                G.season_curr_time = 0;
+                G.season_max_time  = C.SEASON_TIME.random_float();
+                G.season_index     = wrap_around(G.season_index + 1, C.SEASON_COLORS.length);
             }
-            draw_tree(tree);
+
+            const next_index = wrap_around(G.season_index + 1, C.SEASON_COLORS.length);
+            G.season_t     = (G.season_curr_time / G.season_max_time);
+            G.season_color = chroma.mix(
+                C.SEASON_COLORS[G.season_index],
+                C.SEASON_COLORS[next_index],
+                G.season_t
+            )
         }
+
+        clear_canvas(G.season_color);
     end_draw();
 }
