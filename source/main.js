@@ -19,6 +19,15 @@
 //----------------------------------------------------------------------------//
 // Constants                                                                  //
 //----------------------------------------------------------------------------//
+//------------------------------------------------------------------------------
+__SOURCES = [
+    "/modules/demolib/modules/external/chroma.js",
+    "/modules/demolib/source/demolib.js",
+]
+
+//----------------------------------------------------------------------------//
+// Constants                                                                  //
+//----------------------------------------------------------------------------//
 const GENERATIONS_MIN = 5;
 const GENERATIONS_MAX = 7;
 const SIZE_MIN        = 100;
@@ -34,25 +43,9 @@ const ANIM_GROW_DURATION_MAX = 3500;
 const MIN_TREES_COUNT = 3;
 const MAX_TREES_COUNT = 7;
 
-
-//----------------------------------------------------------------------------//
-// Variables                                                                  //
-//----------------------------------------------------------------------------//
-var background_color = chroma.rgb(221, 227, 213).name();
-var tree_color       = chroma.rgb(102,  80,  93).name();
-var trees            = [];
-
-
-//----------------------------------------------------------------------------//
-// Helper Functions                                                           //
-//----------------------------------------------------------------------------//
-function CreateTree()
-{
-    const tree_root_space = (Canvas_Half_Width * 0.8);
-    const tree_root_x = Random_Int(-tree_root_space, +tree_root_space);
-    trees.push(new Tree(tree_root_x));
-}
-
+let background_color = null;
+let tree_color       = null;
+let trees            = null;
 
 //----------------------------------------------------------------------------//
 // Classes                                                                    //
@@ -62,230 +55,189 @@ class Branch
 {
     //--------------------------------------------------------------------------
     constructor(
-        x,
-        y,
-        currentSize,
-        currentAngle,
-        currentGeneration,
-        parentTree)
+        start_x, start_y,
+        size, angle, generation,
+        parent_tree)
     {
-        // Parent Tree
-        this.parent_tree = parentTree;
+        this.parent_tree = parent_tree;
 
-        // Position / Size / Color
-        this.curr_angle = currentAngle;
-        this.curr_size  = currentSize;
+        this.curr_angle      = angle;
+        this.curr_size       = size;
+        this.curr_generation = generation;
 
-        this.start = Vector_Create(x, y);
-        this.end   = Vector_Create(
-            x + (this.curr_size * Math_Cos(Math_Radians(this.curr_angle))),
-            y + (this.curr_size * Math_Sin(Math_Radians(this.curr_angle)))
-        );
+        const end_x = this.curr_size * Math.cos(to_radians(this.curr_angle));
+        const end_y = this.curr_size * Math.sin(to_radians(this.curr_angle));
+        this.start_pos = make_vec2(start_x, start_y);
+        this.end_pos   = make_vec2(end_x, end_y);
 
-        // Generation.
-        this.curr_generation = currentGeneration;
-
-        // Animation.
-        this.anim_grow_duration = Random_Int(
-            ANIM_GROW_DURATION_MIN,
-            ANIM_GROW_DURATION_MAX
-        );
-        this.anim_grow_tween = Tween_CreateBasic(
-            this.anim_grow_duration,
-            this.parent_tree.anim_grow_group
-        )
-        .onComplete(()=>{
-            this._CreateSubBranch();
-        });
-
-        if(this.curr_generation == 0) {
-            this.anim_grow_tween.delay(Random_Int(100, 4000))
-        }
-        this.anim_grow_tween.start();
-
-        // Subbranches
         this.branches = [];
-    } // CTOR
-
-    //--------------------------------------------------------------------------
-    Draw(dt)
-    {
-        const  t = this.anim_grow_tween.getValue().value;
-        const x1 = this.start.x;
-        const y1 = this.start.y;
-
-        const x2 = Math_Lerp(x1, this.end.x, t);
-        const y2 = Math_Lerp(y1, this.end.y, t);
-
-        // @notice(stdmatt): спасибо моей хорошей жене that at very early in the
-        // morning just said how I should make the branches thicker near to the
-        // root ;D
-        Canvas_SetStrokeSize((this.parent_tree.max_generations / (this.curr_generation + 1)))
-        Canvas_DrawLine(x1, y1, x2, y2);
-
-        for(let i = 0; i < this.branches.length; ++i) {
-            this.branches[i].Draw(dt);
-        }
-    } // Draw
-
-    //--------------------------------------------------------------------------
-    _CreateSubBranch()
-    {
-        if(this.curr_generation >= this.parent_tree.max_generations) {
-            return;
-        }
-
-        const new_generation = this.curr_generation + 1;
-        // @improve(stdmatt): This way we make the branches to grow bigger
-        // slightly to the left... Can be improved...
-        const t1 = Random_Number(0.6, 1);
-        const t2 = Random_Number(t1, 1);
-
-        const left_branch = new Branch(
-            Math_Lerp(this.start.x, this.end.x, t1),
-            Math_Lerp(this.start.y, this.end.y, t1),
-            this.curr_size  * Random_Number(DECAY_MIN, DECAY_MAX),
-            this.curr_angle - Random_Number(ANGLE_MIN, ANGLE_MAX),
-            new_generation,
-            this.parent_tree
-        );
-
-        const right_branch = new Branch(
-            Math_Lerp(this.start.x, this.end.x, t2),
-            Math_Lerp(this.start.y, this.end.y, t2),
-            this.curr_size  * Random_Number(DECAY_MIN, DECAY_MAX),
-            this.curr_angle + Random_Number(ANGLE_MIN, ANGLE_MAX),
-            new_generation,
-            this.parent_tree
-        );
-
-        this.branches.push(left_branch );
-        this.branches.push(right_branch);
-    } // _CreateSubBranch
-}; // class Branch
-
+    }
+}
 
 //------------------------------------------------------------------------------
-class Tree
+function create_sub_branch(branch)
 {
-    //--------------------------------------------------------------------------
-    constructor(x)
+    if(branch.curr_generation >= branch.parent_tree.max_generations) {
+        return;
+    }
+
+    const new_generation = (branch.curr_generation + 1);
+    // Left
     {
-        this.max_generations = Random_Int(GENERATIONS_MIN, GENERATIONS_MAX);
-        this.color           = chroma(tree_color);
-        this.is_done         = false;
+        const t = random_float(0.7, 1);
 
-        // Animations.
-        this.anim_grow_group = Tween_CreateGroup()
-            .onComplete(()=>{
-                this.anim_die_tween.start();
-            });
+        const x = lerp(branch.start_pos.x, branch.end_pos.x, t);
+        const y = letp(branch.start_pos.y, branch.end_pos.y, t);
+        const s = branch.curr_size  * random_float(DECAY_MIN, DECAY_MAX);
+        const a = branch.curr_angle + random_float(ANGLE_MIN, ANGLE_MAX);
+        const g = new_generation;
+        const p = branch.parent_tree;
 
-        // @todo(stdmatt): Remove magic numbers...
-        this.anim_die_tween = Tween_CreateBasic(Random_Int(1000, 3000))
-            .delay(Random_Int(500, 2500))
-            .onUpdate((v)=>{
-                this.color = this.color.alpha(1 - v.value)
-            })
-            .onComplete(()=>{
-                this.is_done = true;
-            })
+        const branch = new Branch(x, y, s, a, g, p);
+        branch.branches.push(branch);
+    }
 
-        this.branch = new Branch(
-            x,
-            Canvas_Edge_Bottom,
-            Random_Int(SIZE_MIN,  SIZE_MAX),
-            -90 +  Random_Number(-10, +10),
-            0, // current generation
-            this
-        );
-    } // CTOR
-
-    //--------------------------------------------------------------------------
-    Draw(dt)
+    // Right
     {
-        Canvas_SetStrokeStyle(this.color);
-        this.anim_grow_group.update();
-        this.branch.Draw(dt);
-    } // Draw
+        const t = random_float(0.7, 1);
 
-    //--------------------------------------------------------------------------
-    StartToDie()
-    {
-        this.is_dying = true;
+        const x = lerp(branch.start_pos.x, branch.end_pos.x, t);
+        const y = letp(branch.start_pos.y, branch.end_pos.y, t);
+        const s = branch.curr_size  * random_float(DECAY_MIN, DECAY_MAX);
+        const a = branch.curr_angle - random_float(ANGLE_MIN, ANGLE_MAX);
+        const g = new_generation;
+        const p = branch.parent_tree;
 
-    } // StartToDie
-}; // class Tree
+        const branch = new Branch(x, y, s, a, g, p);
+        branch.branches.push(branch);
+    }
+}
+
+//------------------------------------------------------------------------------
+function draw_branch(branch)
+{
+    const size = (branch.parent_tree.max_generations / (branch.curr_generation + 1));
+    set_canvas_stroke_size(size);
+
+    const  t = 1.0;
+    const x1 = branch.start_posx;
+    const y1 = branch.start_posy;
+    const x2 = lerp(t, x1, branch.end_pos.x);
+    const y2 = lerp(t, y1, branch.end_pos.y);
+
+    draw_line(x1, y1, x2, y2);
+
+    for(let i = 0; i < branch.branches.length; ++i) {
+        draw_branch(branch.branches[i]);
+    }
+}
+
+//------------------------------------------------------------------------------
+function create_tree()
+{
+    const t = {};
+    reset_tree(t);
+    return t;
+}
+
+//------------------------------------------------------------------------------
+function reset_tree(tree)
+{
+    tree.max_generations = random_int(GENERATIONS_MIN, GENERATIONS_MAX);
+    tree.color           = chroma(tree_color);
+    tree.is_done         = false;
+
+    const canvas_w = get_canvas_width ();
+    const canvas_h = get_canvas_height();
+
+    const root_x = random_int(-canvas_w * 0.5, +canvas_w * 0.5);
+    const root_y = (canvas_h * 0.5);
+    const size   = random_int(SIZE_MIN,  SIZE_MAX);
+    const angle  = -90 + random_int(-10, +10);
+
+    tree.branch = new Branch(root_x, root_y, size, angle, 0, this);
+}
+
+//------------------------------------------------------------------------------
+function draw_tree(tree)
+{
+    set_canvas_stroke(tree.color);
+    draw_branch      (tree.branch);
+}
+
 
 //----------------------------------------------------------------------------//
 // Setup / Draw                                                               //
 //----------------------------------------------------------------------------//
 //------------------------------------------------------------------------------
-function Setup()
+function setup_demo_mode()
 {
-    const seed = 1;
-    Random_Seed(seed);
+    return new Promise((resolve, reject)=>{
+        demolib_load_all_scripts(__SOURCES).then(()=> {
+            canvas = document.createElement("canvas");
 
-    //
-    // Configure the Canvas.
-    const parent        = document.getElementById("canvas_div");
-    const parent_width  = parent.clientWidth;
-    const parent_height = parent.clientHeight;
+            canvas.width            = window.innerWidth;
+            canvas.height           = window.innerHeight;
+            canvas.style.position   = "fixed";
+            canvas.style.left       = "0px";
+            canvas.style.top        = "0px";
+            canvas.style.zIndex     = "-100";
 
-    const max_side = Math_Max(parent_width, parent_height);
-    const min_side = Math_Min(parent_width, parent_height);
-    const ratio    = (min_side / max_side);
+            document.body.appendChild(canvas);
 
-    // Landscape
-    if(parent_width > parent_height) {
-        Canvas_CreateCanvas(800, 800 * ratio, parent);
-    }
-    // Portrait
-    else {
-        Canvas_CreateCanvas(800 * ratio, 800, parent);
-    }
-
-    Canvas.style.width  = "100%";
-    Canvas.style.height = "100%";
-
-    //
-    // Add the information.
-    const info = document.createElement("p");
-    info.innerHTML = String_Cat(
-        "Simple Tree", "<br>",
-        "Aug 25, 2019", "<br>",
-        GetVersion(),   "<br>",
-        "<a href=\"http://stdmatt.com/demos/simple_tree.html\">More info</a>"
-    );
-    parent.appendChild(info);
-
-    //
-    // Create the Trees.
-    const trees_count = Random_Int(MIN_TREES_COUNT, MAX_TREES_COUNT);
-    for(let i = 0; i < trees_count; ++i) {
-        CreateTree();
-    }
-
-    //
-    // Start the Simulation.
-    Canvas_Start();
+            resolve();
+        });
+    });
 }
 
+//------------------------------------------------------------------------------
+function setup_common(user_canvas)
+{
+    set_main_canvas(user_canvas);
+    set_canvas_fill("white");
+
+    set_random_seed       (null);
+    install_input_handlers(user_canvas);
+
+    // Create the Trees.
+    background_color = chroma("red");
+    tree_color       = chroma("cyan");
+    trees            = [];
+
+    const trees_count = random_int(MIN_TREES_COUNT, MAX_TREES_COUNT);
+    for(let i = 0; i < trees_count; ++i) {
+        trees.push(create_tree());
+    }
+
+    translate_canvas_to_center();
+    start_draw_loop(draw);
+}
 
 //------------------------------------------------------------------------------
-function Draw(dt)
+function demo_start(user_canvas)
 {
-    Canvas_ClearWindow(background_color);
-
-    Tween_Update(dt);
-    for(let i = trees.length -1; i >= 0; --i) {
-        const tree = trees[i];
-        if(tree.is_done) {
-            Array_RemoveAt(trees, i);
-            CreateTree();
-
-            continue;
-        }
-        tree.Draw(dt);
+    if(!user_canvas) {
+        setup_demo_mode().then((new_canvas)=>{
+            setup_common(new_canvas);
+        });
+    } else {
+        setup_common(user_canvas);
     }
+}
+
+//------------------------------------------------------------------------------
+function draw(dt)
+{
+    tween_manager_update(dt);
+
+    begin_draw();
+        clear_canvas();
+        for(let i = 0; i < trees.length; ++i) {
+            const tree = trees[i];
+            if(tree.is_done) {
+                reset_tree(tree);
+            }
+            draw_tree(tree);
+        }
+    end_draw();
 }
