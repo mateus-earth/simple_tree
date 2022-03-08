@@ -10,7 +10,7 @@
 //  Date      : Aug 25, 2019                                                  //
 //  License   : GPLv3                                                         //
 //  Author    : stdmatt <stdmatt@pixelwizards.io>                             //
-//  Copyright : stdmatt 2019 - 2022                                            //
+//  Copyright : stdmatt 2019 - 2022                                           //
 //                                                                            //
 //  Description :                                                             //
 //                                                                            //
@@ -31,36 +31,7 @@ __SOURCES = [
 const C = {} // Constants
 const G = {} // Globals
 
-//----------------------------------------------------------------------------//
-// Classes                                                                    //
-//----------------------------------------------------------------------------//
-//------------------------------------------------------------------------------
-class Branch
-{
-    //--------------------------------------------------------------------------
-    constructor(
-        start_x, start_y,
-        size, angle, generation,
-        parent_tree)
-    {
-        this.parent_tree = parent_tree;
 
-        this.curr_angle      = angle;
-        this.curr_size       = size;
-        this.curr_generation = generation;
-
-        const end_x = this.curr_size * Math.cos(to_radians(this.curr_angle));
-        const end_y = this.curr_size * Math.sin(to_radians(this.curr_angle));
-        this.start_pos = make_vec2(start_x, start_y);
-        this.end_pos   = make_vec2(end_x, end_y);
-
-        this.time_to_grow = random_float(ANIM_GROW_DURATION_MIN, ANIM_GROW_DURATION_MAX);
-        this.grow_time    = 0;
-
-        this.max_branches_count = random_int(BRANCHES_COUNT_MIN, BRANCHES_COUNT_MAX)
-        this.branches = [];
-    }
-}
 
 //------------------------------------------------------------------------------
 function create_sub_branch(branch)
@@ -109,28 +80,6 @@ function draw_branch(branch, dt)
     }
 }
 
-//------------------------------------------------------------------------------
-function create_tree()
-{
-    const t = {};
-    reset_tree(t);
-    return t;
-}
-
-//------------------------------------------------------------------------------
-function reset_tree(tree)
-{
-
-    const canvas_w = get_canvas_width ();
-    const canvas_h = get_canvas_height();
-
-    const root_x = 0; random_int(-canvas_w * 0.5, +canvas_w * 0.5);
-    const root_y = (canvas_h * 0.5);
-    const size   = random_int(SIZE_MIN,  SIZE_MAX);
-    const angle  = -90 + random_int(-10, +10);
-
-    tree.branch = new Branch(root_x, root_y, size, angle, 0, tree);
-}
 
 //------------------------------------------------------------------------------
 function draw_tree(tree, dt)
@@ -167,7 +116,7 @@ function setup_demo_mode()
 //------------------------------------------------------------------------------
 function setup_common(user_canvas)
 {
-    set_main_canvas       (user_canvas);
+    set_main_canvas(user_canvas);
     install_input_handlers(user_canvas);
 
     set_random_seed(null);
@@ -194,13 +143,19 @@ function demo_start(user_canvas)
 //----------------------------------------------------------------------------//
 // Demo                                                                       //
 //----------------------------------------------------------------------------//
+//------------------------------------------------------------------------------
 function init_constants_and_globals()
 {
+    //
+    // Constants
+    //
+
     // Tree
     C.MAX_TREES    = 5;
     C.TREE_AGE     = make_min_max(2, 10);    // seconds
     C.TREE_SIZE    = make_min_max(0.1, 0.7); // % of screen
     C.SPREAD_ANGLE = make_min_max(-15, +15); // degrees
+
     // Season
     C.SEASON_TIME  = make_min_max(1, 1); // seconds;
     C.SPRING_COLOR = chroma("cyan");
@@ -208,39 +163,147 @@ function init_constants_and_globals()
     C.AUTUMN_COLOR = chroma("gray");
     C.WINTER_COLOR = chroma("white");
     C.SEASON_COLORS = [ C.SPRING_COLOR, C.SUMMER_COLOR, C.AUTUMN_COLOR, C.WINTER_COLOR ];
+    G.SPRING_INDEX = 0;
 
-    G.trees             = null;
+    //
+    // Globals
+    //
 
+    // Season
     G.season_index      = 0;
     G.season_max_time   = C.SEASON_TIME.random_float();
     G.season_curr_time  = 0;
     G.season_t          = 0;
+    G.sun_pos           = null;
+
+    // Tree
+    G.trees = [];
+
+    const start_tree = new Branch(
+        null,
+        0, get_canvas_height(0.5),
+        10, 0
+    );
+    G.trees.push(start_tree);
 }
 
 //------------------------------------------------------------------------------
 function update(dt)
 {
     begin_draw();
-        //
-        // Update season
-        //
-        {
-            G.season_curr_time += dt;
-            if(G.season_curr_time >= G.season_max_time) {
-                G.season_curr_time = 0;
-                G.season_max_time  = C.SEASON_TIME.random_float();
-                G.season_index     = wrap_around(G.season_index + 1, C.SEASON_COLORS.length);
-            }
 
-            const next_index = wrap_around(G.season_index + 1, C.SEASON_COLORS.length);
-            G.season_t     = (G.season_curr_time / G.season_max_time);
-            G.season_color = chroma.mix(
-                C.SEASON_COLORS[G.season_index],
-                C.SEASON_COLORS[next_index],
-                G.season_t
-            )
-        }
+    //
+    // Update season
+    //
+    G.season_curr_time += dt;
 
-        clear_canvas(G.season_color);
+    const season_has_changed = G.season_curr_time >= G.season_max_time;
+    const next_index         = wrap_around(G.season_index + 1, C.SEASON_COLORS.length);
+
+    if(season_has_changed) {
+        G.season_curr_time = 0;
+        G.season_max_time  = C.SEASON_TIME.random_float();
+        G.season_index     = next_index;
+    }
+
+    G.season_t     = (G.season_curr_time / G.season_max_time);
+    G.season_color = chroma.mix(
+        C.SEASON_COLORS[G.season_index],
+        C.SEASON_COLORS[next_index],
+        G.season_t
+    )
+
+    clear_canvas(G.season_color);
+
+    //
+    // Update Trees
+    //
+    G.sun_pos = get_mouse_pos();
+    if(!G.sun_pos) {
+        G.sun_pos = make_vec2(
+            Math.cos(get_total_time()) * get_canvas_width(),
+            0
+        );
+    }
+
+    for(let tree_i = 0; tree_i < G.trees.length; ++tree_i) {
+        const tree = G.trees[tree_i];
+        update_branch(tree, dt);
+    }
+
     end_draw();
+}
+
+
+//
+// Branch
+//
+//------------------------------------------------------------------------------
+class Branch
+{
+    constructor(
+        parent_branch,
+        start_x, start_y,
+        max_thickness,
+        generation
+    )
+    {
+        this.parent_branch = parent_branch;
+
+        this.generation = generation;
+        this.life_time  = 0;
+
+        this.thickness     = 0;
+        this.max_thickness = max_thickness;
+
+        this.start_position = null;
+        this.curr_position  = null;
+
+        this.branches = [];
+
+        //
+        // Init...
+        //
+        if(!parent_branch) {
+            this.start_position = make_vec2(start_x, start_y);
+        }
+        this.curr_position = copy_vec2(this.start_position);
+    }
+}
+
+//------------------------------------------------------------------------------
+function update_branch(branch, dt)
+{
+    branch.life_time += dt;
+
+    let is_growing       = false;
+    let is_getting_thick = false;
+
+    if(branch.life_time < 2) {
+        is_growing = true;
+    } 
+    else {
+        is_getting_thick = true;
+    }
+
+    const start_pos = branch.start_position;
+    let curr_pos    = branch.curr_position;
+
+    if(is_growing) {
+        let grow_vec = direction_unit(curr_pos.x, curr_pos.y, G.sun_pos.x, G.sun_pos.y);
+
+        mul_vec2(grow_vec, 10);
+        add_vec2(curr_pos, grow_vec);
+    }
+
+    if(is_getting_thick) {
+        branch.thickness += random_float(0.1, 0.3);
+    }
+
+    set_canvas_stroke_size(branch.thickness);
+    draw_line(start_pos.x, start_pos.y, curr_pos.x, curr_pos.y);
+
+    for(let i = 0; i < branch.branches.length; ++i) {
+        update_branch(branch, dt);
+    }
 }
