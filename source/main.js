@@ -221,7 +221,7 @@ function update(dt)
     G.sun_pos = get_mouse_pos();
     if(!G.sun_pos) {
         G.sun_pos = make_vec2(
-            Math.cos(get_total_time()) * get_canvas_width(),
+            Math.cos(get_total_time()) * get_canvas_width() * 0.5,
             0
         );
     }
@@ -264,9 +264,7 @@ class Branch
         //
         // Init...
         //
-        if(!parent_branch) {
-            this.start_position = make_vec2(start_x, start_y);
-        }
+        this.start_position = make_vec2(start_x, start_y);
         this.curr_position = copy_vec2(this.start_position);
     }
 }
@@ -278,32 +276,60 @@ function update_branch(branch, dt)
 
     let is_growing       = false;
     let is_getting_thick = false;
+    let is_branching     = false;
 
     if(branch.life_time < 2) {
         is_growing = true;
-    } 
+    } else if(branch.life_time < 3) {
+        is_branching = true;
+    }
     else {
-        is_getting_thick = true;
+        // is_getting_thick = true;
     }
 
     const start_pos = branch.start_position;
     let curr_pos    = branch.curr_position;
 
+    //
+    // Growing
+    //
     if(is_growing) {
         let grow_vec = direction_unit(curr_pos.x, curr_pos.y, G.sun_pos.x, G.sun_pos.y);
 
-        mul_vec2(grow_vec, 10);
+        const grow_factor = random_float(0, 5);
+        mul_vec2(grow_vec, grow_factor);
         add_vec2(curr_pos, grow_vec);
     }
 
+    //
+    // Branching
+    //
+    if(is_branching) {
+        const chance = random_float(0, 1);
+        if(chance > 0.9) {
+            const x  = lerp(random_float(0.3, 1.0), start_pos.x, curr_pos.x);
+            const y  = lerp(random_float(0.3, 1.0), start_pos.y, curr_pos.y);
+            const g  = (branch.generation + 1);
+            const mt = (branch.max_thickness * (1 / g));
+
+            const new_branch = new Branch(branch, x, y, mt, g)
+            branch.branches.push(new_branch);
+        }
+    }
+
+
+    //
+    // Getting Thick
+    //
     if(is_getting_thick) {
-        branch.thickness += random_float(0.1, 0.3);
+        const thick_factor = random_float(0.1, 0.3);
+        branch.thickness += thick_factor;
     }
 
     set_canvas_stroke_size(branch.thickness);
     draw_line(start_pos.x, start_pos.y, curr_pos.x, curr_pos.y);
 
     for(let i = 0; i < branch.branches.length; ++i) {
-        update_branch(branch, dt);
+        update_branch(branch.branches[i], dt);
     }
 }
